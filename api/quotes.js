@@ -64,8 +64,7 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const url = `https://financialmodelingprep.com/api/v3/quote/${encodeURIComponent(symbols.join(","))}?apikey=${encodeURIComponent(apiKey)}`;
-
+  const url = `https://financialmodelingprep.com/stable/quote?symbol=${encodeURIComponent(symbols.join(","))}&apikey=${encodeURIComponent(apiKey)}`;
   try {
     const upstream = await fetch(url, {
       headers: {
