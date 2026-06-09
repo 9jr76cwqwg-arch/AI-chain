@@ -705,7 +705,7 @@ a:focus-visible {
 
 table {
   width: 100%;
-  min-width: 1040px;
+  min-width: 1320px;
   border-collapse: collapse;
 }
 
@@ -758,6 +758,7 @@ tbody tr:hover,
 .valuation-summary article,
 .valuation-note,
 .valuation-grid span,
+.quote-grid span,
 .valuation-badge {
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -793,6 +794,10 @@ tbody tr:hover,
   font-style: normal;
 }
 
+.quote-status {
+  color: var(--gold);
+}
+
 .valuation-badge {
   display: inline-flex;
   width: fit-content;
@@ -801,6 +806,19 @@ tbody tr:hover,
   color: var(--cyan);
   padding: 5px 7px;
   font-size: 0.78rem;
+}
+
+.quote-price {
+  color: var(--green);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.positive {
+  color: var(--green) !important;
+}
+
+.negative {
+  color: var(--red) !important;
 }
 
 .score {
@@ -897,30 +915,35 @@ em.good {
   color: var(--muted);
 }
 
-.valuation-detail {
+.valuation-detail,
+.quote-detail {
   background: linear-gradient(180deg, rgba(88, 213, 207, 0.045), transparent);
 }
 
-.valuation-grid {
+.valuation-grid,
+.quote-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 12px;
 }
 
-.valuation-grid span {
+.valuation-grid span,
+.quote-grid span {
   display: grid;
   gap: 5px;
   padding: 10px;
 }
 
-.valuation-grid strong {
+.valuation-grid strong,
+.quote-grid strong {
   color: var(--green);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   overflow-wrap: anywhere;
 }
 
-.valuation-grid small {
+.valuation-grid small,
+.quote-grid small {
   line-height: 1.35;
 }
 
@@ -1103,6 +1126,7 @@ footer p {
   .regional-map,
   .news-feed,
   .valuation-summary,
+  .quote-grid,
   .valuation-grid,
   .framework-grid,
   .chain-row,

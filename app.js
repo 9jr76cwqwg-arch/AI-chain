@@ -19,6 +19,15 @@ const valuationByTicker = new Map(
   (typeof valuationData !== "undefined" ? valuationData : []).map((item) => [item.ticker, item])
 );
 
+const quoteState = {
+  loading: true,
+  configured: false,
+  provider: "Not configured",
+  asOf: null,
+  error: null,
+  quotes: new Map()
+};
+
 const selectors = {
   snapshotPill: document.querySelector("#snapshot-pill"),
   companyCount: document.querySelector("#company-count"),
@@ -60,6 +69,53 @@ function formatDate(dateString) {
     year: "numeric",
     month: "2-digit",
     day: "2-digit"
+  }).format(date);
+}
+
+function formatUsd(value) {
+  if (!Number.isFinite(value)) return "-";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: value >= 100 ? 0 : 2
+  }).format(value);
+}
+
+function formatMarketCap(value) {
+  if (!Number.isFinite(value)) return "-";
+  if (value >= 1e12) return `$${(value / 1e12).toFixed(2)}T`;
+  if (value >= 1e9) return `$${(value / 1e9).toFixed(1)}B`;
+  if (value >= 1e6) return `$${(value / 1e6).toFixed(1)}M`;
+  return formatUsd(value);
+}
+
+function formatMultiple(value, fallback = "-") {
+  if (Number.isFinite(value)) return `${value.toFixed(value >= 100 ? 0 : 1)}x`;
+  return fallback || "-";
+}
+
+function formatQuoteChange(quote) {
+  if (!quote || !Number.isFinite(quote.change) || !Number.isFinite(quote.changesPercentage)) return "-";
+  const sign = quote.change > 0 ? "+" : "";
+  return `${sign}${quote.change.toFixed(2)} / ${sign}${quote.changesPercentage.toFixed(2)}%`;
+}
+
+function quoteChangeClass(quote) {
+  if (!quote || !Number.isFinite(quote.change)) return "";
+  if (quote.change > 0) return "positive";
+  if (quote.change < 0) return "negative";
+  return "";
+}
+
+function formatQuoteTime(value) {
+  if (!value) return "not updated / 未更新";
+  const date = typeof value === "number" ? new Date(value * 1000) : new Date(value);
+  if (Number.isNaN(date.valueOf())) return "not updated / 未更新";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
   }).format(date);
 }
 
@@ -205,6 +261,17 @@ function getValuation(company) {
   };
 }
 
+function getLiveQuote(company) {
+  return quoteState.quotes.get(company.ticker) ?? null;
+}
+
+function quoteStatusLabel() {
+  if (quoteState.loading) return "Loading live quotes / 正在加载实时行情";
+  if (quoteState.error) return `Quote fallback / 行情回退: ${quoteState.error}`;
+  if (!quoteState.configured) return "Live quotes not configured / 未配置实时行情";
+  return `${quoteState.provider} live quotes / ${quoteState.provider} 行情`;
+}
+
 function capTierRank(tier) {
   return {
     Mega: 4,
@@ -218,6 +285,7 @@ function getFilteredCompanies() {
   const query = state.search.trim().toLowerCase();
   const filtered = companies.filter((company) => {
     const valuation = getValuation(company);
+    const quote = getLiveQuote(company);
     const layerMatch = state.layer === "all" || company.layer === state.layer;
     const sectorMatch = state.sector === "all" || getCompanySectors(company).includes(state.sector);
     const typeMatch = state.type === "all" || company.type === state.type;
@@ -238,7 +306,11 @@ function getFilteredCompanies() {
       valuation.read,
       valuation.readCn,
       valuation.capTier,
-      valuation.pe
+      valuation.pe,
+      valuation.forwardPe,
+      quote?.price,
+      quote?.marketCap,
+      quote?.pe
     ]
       .join(" ")
       .toLowerCase();
@@ -535,6 +607,7 @@ function renderCompanyTable(filteredCompanies) {
       const layer = layerById.get(company.layer);
       const freshness = getFreshness(company);
       const valuation = getValuation(company);
+      const quote = getLiveQuote(company);
       const selected = company.id === state.selectedId ? "selected-row" : "";
       return `
         <tr class="${selected}" data-company="${company.id}" tabindex="0">
@@ -545,6 +618,18 @@ function renderCompanyTable(filteredCompanies) {
           <td>
             <span>${company.company}</span>
             <small>${company.companyCn}</small>
+          </td>
+          <td>
+            <span class="quote-price">${formatUsd(quote?.price)}</span>
+            <small class="${quoteChangeClass(quote)}">${formatQuoteChange(quote)}</small>
+          </td>
+          <td>
+            <span>${formatMarketCap(quote?.marketCap)}</span>
+            <small>${quote?.exchange ?? quoteState.provider}</small>
+          </td>
+          <td>
+            <span>${formatMultiple(quote?.pe, valuation.pe)}</span>
+            <small>Fwd ${valuation.forwardPe}</small>
           </td>
           <td>
             <span>${layer?.label ?? company.layer}</span>
@@ -585,6 +670,7 @@ function renderCompanyDetail() {
     .map((id) => sectorById.get(id))
     .filter(Boolean);
   const valuation = getValuation(company);
+  const quote = getLiveQuote(company);
 
   selectors.companyDetail.innerHTML = `
     <div class="detail-header">
@@ -608,6 +694,18 @@ function renderCompanyDetail() {
       <div class="sector-tags">
         ${sectors.map((sector) => `<span>${sector.name}<br /><em>${sector.nameCn}</em></span>`).join("")}
       </div>
+    </section>
+
+    <section class="detail-section quote-detail">
+      <h3>Live Market / 实时行情</h3>
+      <div class="quote-grid">
+        <span><strong>${formatUsd(quote?.price)}</strong><small>Price / 股价</small></span>
+        <span><strong>${formatMarketCap(quote?.marketCap)}</strong><small>Market cap / 市值</small></span>
+        <span><strong>${formatMultiple(quote?.pe, valuation.pe)}</strong><small>TTM P/E / 当前市盈率</small></span>
+        <span><strong class="${quoteChangeClass(quote)}">${formatQuoteChange(quote)}</strong><small>Change / 涨跌</small></span>
+      </div>
+      <p>${quoteStatusLabel()}</p>
+      <p>Last quote: ${formatQuoteTime(quote?.timestamp ?? quoteState.asOf)} / 最新行情：${formatQuoteTime(quote?.timestamp ?? quoteState.asOf)}</p>
     </section>
 
     <section class="detail-section valuation-detail">
@@ -701,6 +799,7 @@ function renderValuationSummary(filteredCompanies) {
     <div class="valuation-note">
       <strong>Valuation Monitor / 估值监控</strong>
       <p>${sourceText}. Forward P/E is an estimate; bands are not price targets. / 前瞻 P/E 为估算，分组不是目标价。</p>
+      <p class="quote-status">${quoteStatusLabel()}</p>
     </div>
     ${renderBucket("Mega-cap anchors", "超大市值锚", mega)}
     ${renderBucket("Premium risk", "高估值风险", premium)}
@@ -830,6 +929,36 @@ function selectCompany(id) {
   document.querySelector(".coverage-layout")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
+async function loadLiveQuotes() {
+  const symbols = [...new Set(companies.map((company) => company.ticker))].join(",");
+  quoteState.loading = true;
+  quoteState.error = null;
+  renderAll();
+
+  try {
+    const response = await fetch(`/api/quotes?symbols=${encodeURIComponent(symbols)}`, {
+      cache: "no-store"
+    });
+    const payload = await response.json();
+
+    quoteState.loading = false;
+    quoteState.configured = Boolean(payload.configured);
+    quoteState.provider = payload.provider ?? "Quote provider";
+    quoteState.asOf = payload.asOf ?? new Date().toISOString();
+    quoteState.error = response.ok ? payload.error ?? null : payload.error ?? `HTTP ${response.status}`;
+    quoteState.quotes = new Map((payload.quotes ?? []).map((quote) => [quote.symbol, quote]));
+  } catch (error) {
+    quoteState.loading = false;
+    quoteState.configured = false;
+    quoteState.provider = "Quote provider";
+    quoteState.asOf = new Date().toISOString();
+    quoteState.error = error instanceof Error ? error.message : "quote request failed";
+    quoteState.quotes = new Map();
+  }
+
+  renderAll();
+}
+
 function bindEvents() {
   selectors.search.addEventListener("input", (event) => {
     state.search = event.target.value;
@@ -941,3 +1070,4 @@ renderAccuracyCenter();
 renderSources();
 bindEvents();
 renderAll();
+loadLiveQuotes();

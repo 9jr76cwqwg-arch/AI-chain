@@ -8,6 +8,7 @@ AI 全产业链投资研究终端。This is a Vercel-ready static dashboard for 
 - 0-10 layer AI industry landscape / 0-10 层 AI 产业链全景图
 - Public-company coverage with earnings dates, latest financial read, catalysts, risks and sources / 上市公司覆盖，包含财报日期、财务解读、催化剂、风险和来源
 - Modular valuation layer in `valuation.js` with market-cap tiers, TTM P/E, forward P/E and analyst valuation bands / `valuation.js` 中独立估值层，包含市值层级、当前 P/E、前瞻 P/E 和分析师估值分组
+- Live quote API route for price, market cap and TTM P/E when `FMP_API_KEY` is configured / 配置 `FMP_API_KEY` 后，可通过 API route 显示实时价格、市值和当前 P/E
 - Accuracy Center with freshness flags / 准确性中心，显示信息时效
 - Source library prioritizing investor-relations and SEC materials / 来源库优先使用公司 IR 和 SEC 材料
 
@@ -50,6 +51,29 @@ The script flags:
 - `ESTIMATED_NEXT_WINDOW`: next earnings window is estimated
 - `REVIEW_45D`: latest report is older than 45 days
 - `STALE_75D`: latest report is older than 75 days
+
+## Live Quotes / 实时行情
+
+The live quote endpoint is `/api/quotes`. It uses Financial Modeling Prep when this Vercel environment variable is set:
+
+实时行情接口是 `/api/quotes`。在 Vercel 设置以下环境变量后，会使用 Financial Modeling Prep：
+
+```bash
+FMP_API_KEY=your_key_here
+```
+
+Vercel setup path:
+
+Vercel 设置路径：
+
+1. Project Settings
+2. Environment Variables
+3. Add `FMP_API_KEY`
+4. Redeploy
+
+If the key is missing, the site still loads and falls back to the static valuation snapshot.
+
+如果缺少 key，网站仍会正常加载，并回退到静态估值快照。
 
 ## Deploy To Vercel / 部署到 Vercel
 
