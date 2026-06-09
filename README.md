@@ -7,7 +7,7 @@ AI 全产业链投资研究终端。This is a Vercel-ready static dashboard for 
 - Bilingual English and Chinese interface / 中英双语界面
 - 0-10 layer AI industry landscape / 0-10 层 AI 产业链全景图
 - Public-company coverage with earnings dates, latest financial read, catalysts, risks and sources / 上市公司覆盖，包含财报日期、财务解读、催化剂、风险和来源
-- Modular valuation layer in `valuation.js` with market-cap tiers, P/E state and analyst valuation bands / `valuation.js` 中独立估值层，包含市值层级、P/E 状态和分析师估值分组
+- Modular valuation layer in `valuation.js` with market-cap tiers, TTM P/E, forward P/E and analyst valuation bands / `valuation.js` 中独立估值层，包含市值层级、当前 P/E、前瞻 P/E 和分析师估值分组
 - Accuracy Center with freshness flags / 准确性中心，显示信息时效
 - Source library prioritizing investor-relations and SEC materials / 来源库优先使用公司 IR 和 SEC 材料
 
@@ -24,7 +24,7 @@ Recommended workflow:
 3. Replace estimated earnings windows with announced dates once companies publish them.
 4. Use official investor-relations pages or SEC filings first.
 5. Keep speculative/private companies in the landscape map separate from public-company financial coverage.
-6. Refresh `valuation.js` when market multiples materially change.
+6. Refresh `valuation.js` when market multiples or forward earnings estimates materially change.
 
 建议流程：
 
@@ -33,7 +33,7 @@ Recommended workflow:
 3. 公司公布正式财报日期后，替换估算窗口。
 4. 优先使用公司投资者关系网站或 SEC 文件。
 5. 将投机性/非上市公司放在全景图中，与上市公司财务覆盖分开。
-6. 市场倍数明显变化时，刷新 `valuation.js`。
+6. 市场倍数或前瞻盈利预期明显变化时，刷新 `valuation.js`。
 
 ## Local Verification / 本地核验
 

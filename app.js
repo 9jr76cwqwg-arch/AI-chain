@@ -197,6 +197,7 @@ function getValuation(company) {
   return valuationByTicker.get(company.ticker) ?? {
     capTier: "N.A.",
     pe: "N.A.",
+    forwardPe: "N.A.",
     band: "Not classified",
     bandCn: "未分类",
     read: "Valuation data has not been refreshed for this name.",
@@ -551,7 +552,7 @@ function renderCompanyTable(filteredCompanies) {
           </td>
           <td>
             <span class="valuation-badge">${valuation.bandCn}</span>
-            <small>${valuation.capTier} cap / ${valuation.pe}</small>
+            <small>${valuation.capTier} cap / Fwd ${valuation.forwardPe}</small>
           </td>
           <td><span class="score">${company.score}</span></td>
           <td>
@@ -613,7 +614,8 @@ function renderCompanyDetail() {
       <h3>Valuation / 估值</h3>
       <div class="valuation-grid">
         <span><strong>${valuation.capTier}</strong><small>Market-cap tier / 市值层级</small></span>
-        <span><strong>${valuation.pe}</strong><small>P/E or N.M. / 市盈率或无意义</small></span>
+        <span><strong>${valuation.pe}</strong><small>TTM P/E or N.M. / 当前市盈率或无意义</small></span>
+        <span><strong>${valuation.forwardPe}</strong><small>Forward P/E est. / 前瞻市盈率估算</small></span>
         <span><strong>${valuation.band}</strong><small>${valuation.bandCn}</small></span>
       </div>
       <p>${valuation.read}</p>
@@ -698,7 +700,7 @@ function renderValuationSummary(filteredCompanies) {
   selectors.valuationSummary.innerHTML = `
     <div class="valuation-note">
       <strong>Valuation Monitor / 估值监控</strong>
-      <p>${sourceText}. Bands are analyst classifications, not price targets. / 分组是分析师分类，不是目标价。</p>
+      <p>${sourceText}. Forward P/E is an estimate; bands are not price targets. / 前瞻 P/E 为估算，分组不是目标价。</p>
     </div>
     ${renderBucket("Mega-cap anchors", "超大市值锚", mega)}
     ${renderBucket("Premium risk", "高估值风险", premium)}

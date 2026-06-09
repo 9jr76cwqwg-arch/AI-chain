@@ -86,9 +86,16 @@ const missingValuation = context.companies
     company: company.company
   }));
 
+const missingForwardPe = context.valuationData
+  .filter((item) => !item.forwardPe)
+  .map((item) => ({
+    ticker: item.ticker,
+    pe: item.pe
+  }));
+
 const hardCompanyFindings = companyFindings.filter((item) => item.hardFlags.length > 0);
 const watchCompanyFindings = companyFindings.filter((item) => item.watchFlags.length > 0);
-const hardIssueCount = hardCompanyFindings.length + regionalBadSources.length + newsBadSources.length;
+const hardIssueCount = hardCompanyFindings.length + regionalBadSources.length + newsBadSources.length + missingForwardPe.length;
 
 console.log(`AI value-chain data snapshot: ${context.snapshotMeta.asOf}`);
 console.log(`Companies: ${context.companies.length}`);
@@ -98,6 +105,7 @@ console.log(`Valuation items: ${context.valuationData.length}`);
 console.log(`Company hard source issues: ${hardCompanyFindings.length}`);
 console.log(`Company freshness watch items: ${watchCompanyFindings.length}`);
 console.log(`Companies missing valuation: ${missingValuation.length}`);
+console.log(`Valuation items missing forward P/E: ${missingForwardPe.length}`);
 console.log(`Regional players without linked source yet: ${regionalUnlinkedCount}`);
 console.log(`Regional bad source links: ${regionalBadSources.length}`);
 console.log(`News bad source links: ${newsBadSources.length}`);
@@ -125,6 +133,11 @@ if (newsBadSources.length) {
 if (missingValuation.length) {
   console.log("\nCompanies missing valuation coverage:");
   console.table(missingValuation);
+}
+
+if (missingForwardPe.length) {
+  console.log("\nValuation items missing forward P/E:");
+  console.table(missingForwardPe);
 }
 
 if (hardIssueCount) {
