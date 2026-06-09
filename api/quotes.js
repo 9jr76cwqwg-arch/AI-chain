@@ -74,13 +74,17 @@ module.exports = async function handler(req, res) {
     });
 
     if (!upstream.ok) {
-      sendJson(res, upstream.status, {
-        configured: true,
-        provider: "Financial Modeling Prep",
-        error: `Quote provider returned HTTP ${upstream.status}`
-      });
-      return;
-    }
+  console.log("FMP error:", upstream.status);
+
+  sendJson(res, 200, {
+    configured: true,
+    provider: "Financial Modeling Prep",
+    quotes: [],
+    error: `Quote provider returned HTTP ${upstream.status}`
+  });
+
+  return;
+}
 
     const payload = await upstream.json();
     const quotes = Array.isArray(payload) ? payload.map(normalizeFmpQuote) : [];
