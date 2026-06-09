@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Value Chain Investment Terminal</title>
+    <meta
+      name="description"
+      content="Bilingual AI value-chain investment research dashboard with sourced earnings snapshots and freshness controls."
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%23090a0a'/%3E%3Cpath d='M15 46 28 16h8l13 30h-8l-3-7H26l-3 7h-8Zm14-14h6l-3-8-3 8Z' fill='%2358d5cf'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">AI Investment Research / AI 投资研究</p>
+        <h1>AI Value Chain Terminal<br /><span>AI 全产业链投资研究终端</span></h1>
+      </div>
+      <div class="topbar-actions">
+        <span id="snapshot-pill" class="status-pill"></span>
+        <a class="source-button" href="#sources">Sources / 来源</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="dashboard-grid" aria-label="Dashboard summary">
+        <div class="metric">
+          <span class="metric-label">Companies / 公司</span>
+          <strong id="company-count">0</strong>
+          <small>Public AI chain coverage / 上市 AI 链覆盖</small>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Sources / 来源</span>
+          <strong id="source-count">0</strong>
+          <small>Official-first evidence / 官方来源优先</small>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Review Needed / 需复核</span>
+          <strong id="review-count">0</strong>
+          <small>Stale or estimated items / 过期或估算项目</small>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Next Catalyst / 下个催化</span>
+          <strong id="next-catalyst">-</strong>
+          <small>Nearest declared event / 最近已声明事件</small>
+        </div>
+      </section>
+
+      <section class="control-strip" aria-label="Filters">
+        <label>
+          <span>Search / 搜索</span>
+          <input id="search" type="search" placeholder="NVDA, HBM, 电力..." />
+        </label>
+        <label>
+          <span>Layer / 环节</span>
+          <select id="layer-filter">
+            <option value="all">All layers / 全部环节</option>
+          </select>
+        </label>
+        <label>
+          <span>Sector / 板块</span>
+          <select id="sector-filter">
+            <option value="all">All sectors / 全部板块</option>
+          </select>
+        </label>
+        <label>
+          <span>Type / 类型</span>
+          <select id="type-filter">
+            <option value="all">All types / 全部类型</option>
+            <option value="Core">Core / 核心</option>
+            <option value="Watchlist">Watchlist / 观察</option>
+            <option value="Speculative">Speculative / 投机</option>
+          </select>
+        </label>
+        <label>
+          <span>Sort / 排序</span>
+          <select id="sort-select">
+            <option value="score">Score / 评分</option>
+            <option value="ticker">Ticker / 代码</option>
+            <option value="lastReport">Latest report / 最新财报</option>
+            <option value="risk">Risk / 风险</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="section-block">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">2026 Landscape / 2026 全景图谱</p>
+            <h2>AI Industry Chain From Power To Physical AI / 从电力到机器人的 AI 产业链</h2>
+          </div>
+        </div>
+        <div id="landscape-map" class="landscape-map" aria-live="polite"></div>
+      </section>
+
+      <section class="section-block">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Global Champions / 全球关键公司</p>
+            <h2>Regional AI Supply Chain Leaders / 分地区 AI 产业链核心参与者</h2>
+          </div>
+        </div>
+        <div id="regional-map" class="regional-map"></div>
+      </section>
+
+      <section class="section-block">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">News & Intelligence / 新闻与专业情报</p>
+            <h2>Bloomberg, SemiAnalysis And Other Professional Signals / Bloomberg、SemiAnalysis 等专业信号</h2>
+          </div>
+        </div>
+        <div class="news-controls">
+          <label>
+            <span>News Search / 新闻搜索</span>
+            <input id="news-search" type="search" placeholder="Bloomberg, HBM, capex, 韩国..." />
+          </label>
+          <label>
+            <span>Source / 来源</span>
+            <select id="news-source-filter">
+              <option value="all">All sources / 全部来源</option>
+            </select>
+          </label>
+          <label>
+            <span>Region / 地区</span>
+            <select id="news-region-filter">
+              <option value="all">All regions / 全部地区</option>
+            </select>
+          </label>
+          <label>
+            <span>Sector / 板块</span>
+            <select id="news-sector-filter">
+              <option value="all">All sectors / 全部板块</option>
+            </select>
+          </label>
+          <label>
+            <span>Importance / 重要性</span>
+            <select id="news-importance-filter">
+              <option value="all">All / 全部</option>
+              <option value="High">High / 高</option>
+              <option value="Medium">Medium / 中</option>
+            </select>
+          </label>
+        </div>
+        <div id="news-feed" class="news-feed"></div>
+      </section>
+
+      <section class="section-block">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Industry Map / 产业链地图</p>
+            <h2>Where AI Spend Converts Into Revenue / AI 支出在哪里转化为收入</h2>
+          </div>
+          <button id="reset-filters" type="button">Reset / 重置</button>
+        </div>
+        <div id="chain-map" class="chain-map" aria-live="polite"></div>
+      </section>
+
+      <section class="split-layout">
+        <div class="section-block">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Company Table / 公司表</p>
+              <h2>Coverage Universe / 覆盖公司池</h2>
+            </div>
+            <span id="result-count" class="muted"></span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Ticker<br />代码</th>
+                  <th>Company<br />公司</th>
+                  <th>Layer<br />环节</th>
+                  <th>Score<br />评分</th>
+                  <th>Report<br />财报</th>
+                  <th>Freshness<br />时效</th>
+                </tr>
+              </thead>
+              <tbody id="company-table"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <aside class="section-block detail-panel" aria-label="Company detail">
+          <div id="company-detail"></div>
+        </aside>
+      </section>
+
+      <section class="section-block">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Playbooks / 组合框架</p>
+            <h2>Portfolio Construction Ideas / 投资组合构建思路</h2>
+          </div>
+        </div>
+        <div id="playbooks" class="playbook-grid"></div>
+      </section>
+
+      <section class="split-layout">
+        <div class="section-block">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Calendar / 财报日历</p>
+              <h2>Upcoming Watch Windows / 后续观察窗口</h2>
+            </div>
+          </div>
+          <div id="calendar" class="calendar-list"></div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Accuracy Center / 准确性中心</p>
+              <h2>Verification Rules / 核验规则</h2>
+            </div>
+          </div>
+          <div id="accuracy-center" class="accuracy-list"></div>
+        </div>
+      </section>
+
+      <section id="sources" class="section-block">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Evidence / 证据</p>
+            <h2>Source Library / 来源库</h2>
+          </div>
+        </div>
+        <div id="source-list" class="source-list"></div>
+      </section>
+    </main>
+
+    <footer>
+      <p id="disclaimer"></p>
+      <p id="disclaimer-cn"></p>
+    </footer>
+
+    <script src="./data.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
