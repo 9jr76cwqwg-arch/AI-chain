@@ -81,6 +81,7 @@
           <select id="sort-select">
             <option value="score">Score / 评分</option>
             <option value="ticker">Ticker / 代码</option>
+            <option value="marketCap">Market cap / 市值</option>
             <option value="lastReport">Latest report / 最新财报</option>
             <option value="risk">Risk / 风险</option>
           </select>
@@ -169,6 +170,7 @@
             </div>
             <span id="result-count" class="muted"></span>
           </div>
+          <div id="valuation-summary" class="valuation-summary"></div>
           <div class="table-wrap">
             <table>
               <thead>
@@ -176,6 +178,7 @@
                   <th>Ticker<br />代码</th>
                   <th>Company<br />公司</th>
                   <th>Layer<br />环节</th>
+                  <th>Valuation<br />估值</th>
                   <th>Score<br />评分</th>
                   <th>Report<br />财报</th>
                   <th>Freshness<br />时效</th>
@@ -240,6 +243,7 @@
     </footer>
 
     <script src="./data.js"></script>
+    <script src="./valuation.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

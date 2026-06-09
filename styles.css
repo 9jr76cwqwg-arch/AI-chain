@@ -321,19 +321,24 @@ a:focus-visible {
   min-width: 160px;
   padding: 12px;
   background:
-    linear-gradient(180deg, rgba(241, 243, 237, 0.96), rgba(218, 226, 220, 0.92));
-  color: #101514;
+    linear-gradient(145deg, rgba(88, 213, 207, 0.12), rgba(226, 190, 98, 0.055) 46%, rgba(255, 255, 255, 0.025)),
+    #101513;
+  border-color: rgba(88, 213, 207, 0.18);
+  color: var(--text);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 12px 34px rgba(0, 0, 0, 0.28);
 }
 
 .landscape-segment h4 {
   margin: 0 0 10px;
-  color: #0d3b72;
+  color: var(--cyan);
   font-size: 0.92rem;
   line-height: 1.18;
 }
 
 .landscape-segment h4 span {
-  color: #4a6178;
+  color: var(--muted);
   font-weight: 600;
 }
 
@@ -356,19 +361,22 @@ a:focus-visible {
 }
 
 .player.public {
-  border: 1px solid rgba(13, 59, 114, 0.3);
-  background: rgba(13, 59, 114, 0.08);
-  color: #082b54;
+  border: 1px solid rgba(88, 213, 207, 0.34);
+  background:
+    linear-gradient(180deg, rgba(88, 213, 207, 0.16), rgba(88, 213, 207, 0.06));
+  color: var(--text);
   cursor: pointer;
 }
 
 .player.public:hover {
-  background: rgba(13, 59, 114, 0.16);
+  border-color: var(--cyan);
+  background: rgba(88, 213, 207, 0.18);
 }
 
 .player.private {
-  background: rgba(16, 21, 20, 0.06);
-  color: #222a28;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
 }
 
 .trend-card {
@@ -697,7 +705,7 @@ a:focus-visible {
 
 table {
   width: 100%;
-  min-width: 860px;
+  min-width: 1040px;
   border-collapse: collapse;
 }
 
@@ -738,6 +746,61 @@ tbody tr:hover,
   margin-top: 6px;
   min-height: 24px;
   color: var(--gold);
+}
+
+.valuation-summary {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) repeat(4, minmax(130px, 1fr));
+  gap: 9px;
+  margin-bottom: 12px;
+}
+
+.valuation-summary article,
+.valuation-note,
+.valuation-grid span,
+.valuation-badge {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.valuation-note,
+.valuation-summary article {
+  min-height: 82px;
+  padding: 11px;
+}
+
+.valuation-note strong,
+.valuation-summary article span {
+  color: var(--cyan);
+  font-weight: 700;
+}
+
+.valuation-note p {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+}
+
+.valuation-summary article strong {
+  display: block;
+  margin: 5px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 1.4rem;
+}
+
+.valuation-summary em {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.valuation-badge {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 26px;
+  align-items: center;
+  color: var(--cyan);
+  padding: 5px 7px;
+  font-size: 0.78rem;
 }
 
 .score {
@@ -832,6 +895,33 @@ em.good {
 
 .detail-section li span {
   color: var(--muted);
+}
+
+.valuation-detail {
+  background: linear-gradient(180deg, rgba(88, 213, 207, 0.045), transparent);
+}
+
+.valuation-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.valuation-grid span {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+}
+
+.valuation-grid strong {
+  color: var(--green);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+.valuation-grid small {
+  line-height: 1.35;
 }
 
 .detail-two-col {
@@ -969,7 +1059,8 @@ footer p {
   .playbook-grid,
   .source-list,
   .regional-map,
-  .news-feed {
+  .news-feed,
+  .valuation-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1011,6 +1102,8 @@ footer p {
   .source-list,
   .regional-map,
   .news-feed,
+  .valuation-summary,
+  .valuation-grid,
   .framework-grid,
   .chain-row,
   .detail-two-col,

@@ -15,6 +15,9 @@ const state = {
 const layerById = new Map(chainLayers.map((layer) => [layer.id, layer]));
 const sectorById = new Map(sectorTaxonomy.map((sector) => [sector.id, sector]));
 const sourceById = new Map(sources.map((source) => [source.id, source]));
+const valuationByTicker = new Map(
+  (typeof valuationData !== "undefined" ? valuationData : []).map((item) => [item.ticker, item])
+);
 
 const selectors = {
   snapshotPill: document.querySelector("#snapshot-pill"),
@@ -38,6 +41,7 @@ const selectors = {
   newsFeed: document.querySelector("#news-feed"),
   chainMap: document.querySelector("#chain-map"),
   resultCount: document.querySelector("#result-count"),
+  valuationSummary: document.querySelector("#valuation-summary"),
   companyTable: document.querySelector("#company-table"),
   companyDetail: document.querySelector("#company-detail"),
   playbooks: document.querySelector("#playbooks"),
@@ -145,6 +149,30 @@ function sourceQuality(source) {
     "tokyoelectron.com",
     "advantest.com",
     "renesas.com",
+    "constellationenergy.com",
+    "vistracorp.com",
+    "oklo.com",
+    "bwxt.com",
+    "hubbell.com",
+    "comfortsystemsusa.com",
+    "intc.com",
+    "qualcomm.com",
+    "asteralabs.com",
+    "wdc.com",
+    "seagate.com",
+    "gf.com",
+    "umc.com",
+    "investors.st.com",
+    "coherent.com",
+    "lumentum.com",
+    "cisco.com",
+    "ciena.com",
+    "equinix.com",
+    "digitalrealty.com",
+    "ibm.com/investor",
+    "adobe.com/investor",
+    "sap.com/investors",
+    "alibabagroup.com",
     "semianalysis.com",
     "bloomberg.com/professional"
   ];
@@ -165,9 +193,30 @@ function getNewsSectors(item) {
     .map((sector) => sector.id);
 }
 
+function getValuation(company) {
+  return valuationByTicker.get(company.ticker) ?? {
+    capTier: "N.A.",
+    pe: "N.A.",
+    band: "Not classified",
+    bandCn: "未分类",
+    read: "Valuation data has not been refreshed for this name.",
+    readCn: "该公司的估值数据尚未刷新。"
+  };
+}
+
+function capTierRank(tier) {
+  return {
+    Mega: 4,
+    Large: 3,
+    Mid: 2,
+    Small: 1
+  }[tier] ?? 0;
+}
+
 function getFilteredCompanies() {
   const query = state.search.trim().toLowerCase();
   const filtered = companies.filter((company) => {
+    const valuation = getValuation(company);
     const layerMatch = state.layer === "all" || company.layer === state.layer;
     const sectorMatch = state.sector === "all" || getCompanySectors(company).includes(state.sector);
     const typeMatch = state.type === "all" || company.type === state.type;
@@ -182,7 +231,13 @@ function getFilteredCompanies() {
       company.financials,
       company.financialsCn,
       company.catalysts.join(" "),
-      company.catalystsCn.join(" ")
+      company.catalystsCn.join(" "),
+      valuation.band,
+      valuation.bandCn,
+      valuation.read,
+      valuation.readCn,
+      valuation.capTier,
+      valuation.pe
     ]
       .join(" ")
       .toLowerCase();
@@ -191,6 +246,7 @@ function getFilteredCompanies() {
 
   return filtered.sort((a, b) => {
     if (state.sort === "ticker") return a.ticker.localeCompare(b.ticker);
+    if (state.sort === "marketCap") return capTierRank(getValuation(b).capTier) - capTierRank(getValuation(a).capTier) || b.score - a.score;
     if (state.sort === "lastReport") return b.lastReport.localeCompare(a.lastReport);
     if (state.sort === "risk") return riskRank(b.valuationRisk) - riskRank(a.valuationRisk);
     return b.score - a.score;
@@ -477,6 +533,7 @@ function renderCompanyTable(filteredCompanies) {
     .map((company) => {
       const layer = layerById.get(company.layer);
       const freshness = getFreshness(company);
+      const valuation = getValuation(company);
       const selected = company.id === state.selectedId ? "selected-row" : "";
       return `
         <tr class="${selected}" data-company="${company.id}" tabindex="0">
@@ -491,6 +548,10 @@ function renderCompanyTable(filteredCompanies) {
           <td>
             <span>${layer?.label ?? company.layer}</span>
             <small>${layer?.labelCn ?? ""}</small>
+          </td>
+          <td>
+            <span class="valuation-badge">${valuation.bandCn}</span>
+            <small>${valuation.capTier} cap / ${valuation.pe}</small>
           </td>
           <td><span class="score">${company.score}</span></td>
           <td>
@@ -522,6 +583,7 @@ function renderCompanyDetail() {
   const sectors = getCompanySectors(company)
     .map((id) => sectorById.get(id))
     .filter(Boolean);
+  const valuation = getValuation(company);
 
   selectors.companyDetail.innerHTML = `
     <div class="detail-header">
@@ -545,6 +607,17 @@ function renderCompanyDetail() {
       <div class="sector-tags">
         ${sectors.map((sector) => `<span>${sector.name}<br /><em>${sector.nameCn}</em></span>`).join("")}
       </div>
+    </section>
+
+    <section class="detail-section valuation-detail">
+      <h3>Valuation / 估值</h3>
+      <div class="valuation-grid">
+        <span><strong>${valuation.capTier}</strong><small>Market-cap tier / 市值层级</small></span>
+        <span><strong>${valuation.pe}</strong><small>P/E or N.M. / 市盈率或无意义</small></span>
+        <span><strong>${valuation.band}</strong><small>${valuation.bandCn}</small></span>
+      </div>
+      <p>${valuation.read}</p>
+      <p>${valuation.readCn}</p>
     </section>
 
     <section class="detail-section">
@@ -596,6 +669,41 @@ function renderCompanyDetail() {
           .join("")}
       </div>
     </section>
+  `;
+}
+
+function renderValuationSummary(filteredCompanies) {
+  if (!selectors.valuationSummary) return;
+
+  const withValuation = filteredCompanies.map((company) => ({
+    company,
+    valuation: getValuation(company)
+  }));
+  const premium = withValuation.filter(({ company }) => ["High", "Very High"].includes(company.valuationRisk));
+  const reasonable = withValuation.filter(({ valuation }) => /value|reasonable|relative|合理|价值|低估/i.test(`${valuation.band} ${valuation.bandCn}`));
+  const speculative = withValuation.filter(({ valuation }) => /speculative|optionality|frontier|turnaround|投机|期权|转型|前沿/i.test(`${valuation.band} ${valuation.bandCn}`));
+  const mega = withValuation.filter(({ valuation }) => valuation.capTier === "Mega");
+  const sourceText = typeof valuationSnapshot !== "undefined"
+    ? `Snapshot ${valuationSnapshot.asOf} / 快照 ${valuationSnapshot.asOf}`
+    : "Valuation snapshot / 估值快照";
+
+  const renderBucket = (label, labelCn, items) => `
+    <article>
+      <span>${label}<br /><em>${labelCn}</em></span>
+      <strong>${items.length}</strong>
+      <small>${items.slice(0, 5).map(({ company }) => company.ticker).join(" / ") || "None / 无"}</small>
+    </article>
+  `;
+
+  selectors.valuationSummary.innerHTML = `
+    <div class="valuation-note">
+      <strong>Valuation Monitor / 估值监控</strong>
+      <p>${sourceText}. Bands are analyst classifications, not price targets. / 分组是分析师分类，不是目标价。</p>
+    </div>
+    ${renderBucket("Mega-cap anchors", "超大市值锚", mega)}
+    ${renderBucket("Premium risk", "高估值风险", premium)}
+    ${renderBucket("Reasonable/value", "合理或价值", reasonable)}
+    ${renderBucket("Speculative/option", "投机或期权", speculative)}
   `;
 }
 
@@ -816,6 +924,7 @@ function renderAll() {
 
   renderSummary();
   renderChainMap(filteredCompanies);
+  renderValuationSummary(filteredCompanies);
   renderCompanyTable(filteredCompanies);
   renderCompanyDetail();
 }
