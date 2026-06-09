@@ -715,7 +715,9 @@ function renderSources() {
 function selectCompany(id) {
   state.selectedId = id;
   renderAll();
-  document.querySelector(".detail-panel")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  const detailPanel = document.querySelector(".detail-panel");
+  if (detailPanel) detailPanel.scrollTop = 0;
+  document.querySelector(".coverage-layout")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 function bindEvents() {

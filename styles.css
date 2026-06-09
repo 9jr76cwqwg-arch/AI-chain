@@ -672,6 +672,23 @@ a:focus-visible {
   gap: 14px;
 }
 
+.coverage-layout {
+  align-items: start;
+}
+
+.company-list-panel,
+.coverage-layout .detail-panel {
+  margin-top: 0;
+}
+
+.coverage-layout .table-wrap,
+.coverage-layout .detail-panel {
+  max-height: calc(100vh - 28px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
 .table-wrap {
   overflow: auto;
   border: 1px solid var(--line);
@@ -760,7 +777,7 @@ em.good {
 
 .detail-panel {
   position: sticky;
-  top: 116px;
+  top: 14px;
   align-self: start;
 }
 
@@ -970,6 +987,13 @@ footer p {
 
   .detail-panel {
     position: static;
+  }
+
+  .coverage-layout .table-wrap,
+  .coverage-layout .detail-panel {
+    max-height: none;
+    overflow: visible;
+    overscroll-behavior: auto;
   }
 }
 
