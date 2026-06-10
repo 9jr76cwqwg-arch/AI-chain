@@ -18,10 +18,10 @@ const FREE_PLAN_SUPPORTED_SYMBOLS = new Set([
   "BIDU"
 ]);
 
-function sendJson(res, status, payload) {
+function sendJson(res, status, payload, cacheControl) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.setHeader("Cache-Control", `s-maxage=${CACHE_SECONDS}, stale-while-revalidate=${CACHE_SECONDS * 4}`);
+  res.setHeader("Cache-Control", cacheControl ?? `s-maxage=${CACHE_SECONDS}, stale-while-revalidate=${CACHE_SECONDS * 4}`);
   res.end(JSON.stringify(payload));
 }
 
@@ -159,7 +159,7 @@ module.exports = async function handler(req, res) {
     const returned = new Set(quotes.map((quote) => quote.symbol));
     const missingEligible = eligibleSymbols.filter((symbol) => !returned.has(symbol));
 
-    sendJson(res, 200, {
+    const payload = {
       configured: true,
       provider: PROVIDER,
       planMode: "free-plan-safe",
@@ -178,11 +178,13 @@ module.exports = async function handler(req, res) {
           message: "No quote returned by provider."
         }))
       ]
-    });
+    };
+
+    sendJson(res, 200, payload);
   } catch (error) {
     const rateLimited = error.status === 429;
 
-    sendJson(res, 200, {
+    const payload = {
       configured: true,
       provider: PROVIDER,
       planMode: "free-plan-safe",
@@ -202,6 +204,8 @@ module.exports = async function handler(req, res) {
         ...skippedErrors(skippedSymbols)
       ],
       error: error instanceof Error ? error.message : "Quote provider failed"
-    });
+    };
+
+    sendJson(res, 200, payload, rateLimited ? "no-store, max-age=0" : undefined);
   }
 };
