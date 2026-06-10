@@ -1,11 +1,27 @@
-const CACHE_SECONDS = 300;
+const CACHE_SECONDS = 60 * 60 * 6;
 const PROVIDER = "Financial Modeling Prep";
-const MAX_BATCH_SIZE = 12;
+
+const FREE_PLAN_SUPPORTED_SYMBOLS = new Set([
+  "NVDA",
+  "AMD",
+  "TSM",
+  "MSFT",
+  "GOOGL",
+  "AMZN",
+  "META",
+  "PLTR",
+  "TSLA",
+  "INTC",
+  "CSCO",
+  "ADBE",
+  "BABA",
+  "BIDU"
+]);
 
 function sendJson(res, status, payload) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.setHeader("Cache-Control", `s-maxage=${CACHE_SECONDS}, stale-while-revalidate=${CACHE_SECONDS * 6}`);
+  res.setHeader("Cache-Control", `s-maxage=${CACHE_SECONDS}, stale-while-revalidate=${CACHE_SECONDS * 4}`);
   res.end(JSON.stringify(payload));
 }
 
@@ -64,15 +80,9 @@ function normalizeFmpQuote(item) {
   };
 }
 
-function chunkSymbols(symbols, size) {
-  const chunks = [];
-  for (let index = 0; index < symbols.length; index += size) {
-    chunks.push(symbols.slice(index, index + size));
-  }
-  return chunks;
-}
+async function fetchStableQuotes(symbols, apiKey) {
+  if (!symbols.length) return [];
 
-async function fetchStableQuote(symbols, apiKey) {
   const url = new URL("https://financialmodelingprep.com/stable/quote");
   url.searchParams.set("symbol", symbols.join(","));
   url.searchParams.set("apikey", apiKey);
@@ -99,77 +109,16 @@ async function fetchStableQuote(symbols, apiKey) {
     throw error;
   }
 
-  return Array.isArray(payload) ? payload.map(normalizeFmpQuote) : [];
+  return Array.isArray(payload) ? payload.filter((item) => item?.symbol).map(normalizeFmpQuote) : [];
 }
 
-async function fetchQuotesResilient(symbols, apiKey) {
-  const quotes = [];
-  const errors = [];
-  let rateLimitError = null;
-
-  async function trySymbols(group) {
-    if (rateLimitError) {
-      group.forEach((symbol) => errors.push({
-        symbol,
-        status: rateLimitError.status,
-        message: rateLimitError.providerMessage
-      }));
-      return;
-    }
-
-    try {
-      const result = await fetchStableQuote(group, apiKey);
-      quotes.push(...result);
-      const returned = new Set(result.map((quote) => quote.symbol));
-      group
-        .filter((symbol) => !returned.has(symbol))
-        .forEach((symbol) => errors.push({
-          symbol,
-          status: 204,
-          message: "No quote returned by provider"
-        }));
-    } catch (error) {
-      if (error.status === 429) {
-        rateLimitError = error;
-        group.forEach((symbol) => errors.push({
-          symbol,
-          status: 429,
-          message: error.providerMessage || "FMP rate limit reached"
-        }));
-        return;
-      }
-
-      if (group.length > 1 && error.status === 402) {
-        for (const symbol of group) {
-          await trySymbols([symbol]);
-        }
-        return;
-      }
-
-      group.forEach((symbol) => errors.push({
-        symbol,
-        status: error.status ?? 502,
-        message: error.providerMessage || error.message || "Quote provider failed"
-      }));
-    }
-  }
-
-  for (const group of chunkSymbols(symbols, MAX_BATCH_SIZE)) {
-    await trySymbols(group);
-    if (rateLimitError) {
-      const alreadyHandled = new Set([...quotes.map((quote) => quote.symbol), ...errors.map((error) => error.symbol)]);
-      symbols
-        .filter((symbol) => !alreadyHandled.has(symbol))
-        .forEach((symbol) => errors.push({
-          symbol,
-          status: 429,
-          message: rateLimitError.providerMessage || "FMP rate limit reached"
-        }));
-      break;
-    }
-  }
-
-  return { quotes, errors, rateLimited: Boolean(rateLimitError) };
+function skippedErrors(symbols) {
+  return symbols.map((symbol) => ({
+    symbol,
+    status: 402,
+    skipped: true,
+    message: "Skipped on FMP Free Plan to protect the 250-call daily quota."
+  }));
 }
 
 module.exports = async function handler(req, res) {
@@ -191,7 +140,10 @@ module.exports = async function handler(req, res) {
       provider: PROVIDER,
       asOf: new Date().toISOString(),
       requested: symbols.length,
+      eligible: 0,
       returned: 0,
+      skipped: symbols.length,
+      rateLimited: false,
       quotes: [],
       errors: [],
       message: "Set FMP_API_KEY in Vercel environment variables to enable live price, market cap and P/E."
@@ -199,33 +151,56 @@ module.exports = async function handler(req, res) {
     return;
   }
 
+  const eligibleSymbols = symbols.filter((symbol) => FREE_PLAN_SUPPORTED_SYMBOLS.has(symbol));
+  const skippedSymbols = symbols.filter((symbol) => !FREE_PLAN_SUPPORTED_SYMBOLS.has(symbol));
+
   try {
-    const { quotes, errors, rateLimited } = await fetchQuotesResilient(symbols, apiKey);
+    const quotes = await fetchStableQuotes(eligibleSymbols, apiKey);
+    const returned = new Set(quotes.map((quote) => quote.symbol));
+    const missingEligible = eligibleSymbols.filter((symbol) => !returned.has(symbol));
 
     sendJson(res, 200, {
       configured: true,
       provider: PROVIDER,
+      planMode: "free-plan-safe",
       asOf: new Date().toISOString(),
       requested: symbols.length,
+      eligible: eligibleSymbols.length,
       returned: quotes.length,
-      rateLimited,
+      skipped: skippedSymbols.length,
+      rateLimited: false,
       quotes,
-      errors
+      errors: [
+        ...skippedErrors(skippedSymbols),
+        ...missingEligible.map((symbol) => ({
+          symbol,
+          status: 204,
+          message: "No quote returned by provider."
+        }))
+      ]
     });
   } catch (error) {
+    const rateLimited = error.status === 429;
+
     sendJson(res, 200, {
       configured: true,
       provider: PROVIDER,
+      planMode: "free-plan-safe",
       asOf: new Date().toISOString(),
       requested: symbols.length,
+      eligible: eligibleSymbols.length,
       returned: 0,
-      rateLimited: error.status === 429,
+      skipped: skippedSymbols.length,
+      rateLimited,
       quotes: [],
-      errors: symbols.map((symbol) => ({
-        symbol,
-        status: error.status ?? 502,
-        message: error.providerMessage || error.message || "Quote provider failed"
-      })),
+      errors: [
+        ...eligibleSymbols.map((symbol) => ({
+          symbol,
+          status: error.status ?? 502,
+          message: error.providerMessage || error.message || "Quote provider failed"
+        })),
+        ...skippedErrors(skippedSymbols)
+      ],
       error: error instanceof Error ? error.message : "Quote provider failed"
     });
   }
