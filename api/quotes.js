@@ -19,6 +19,7 @@ function cleanSymbols(value) {
 }
 
 function numberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -31,13 +32,21 @@ function firstNumber(...values) {
   return null;
 }
 
-function normalizeFmpQuote(item) {
+function normalizeFmpQuote(item, source = "quote") {
   return {
     symbol: item.symbol,
     name: item.name ?? item.companyName ?? null,
-    price: firstNumber(item.price, item.previousClose, item.open),
-    marketCap: firstNumber(item.marketCap, item.marketCapitalization),
-    pe: firstNumber(item.pe, item.peRatio, item.priceEarningsRatio, item.priceEarningsRatioTTM, item.peRatioTTM),
+    price: firstNumber(item.price, item.previousClose, item.open, item.priceAvg50),
+    marketCap: firstNumber(item.marketCap, item.marketCapitalization, item.mktCap),
+    pe: firstNumber(
+      item.pe,
+      item.peRatio,
+      item.priceEarningsRatio,
+      item.priceEarningsRatioTTM,
+      item.priceToEarningsRatio,
+      item.priceToEarningsRatioTTM,
+      item.peRatioTTM
+    ),
     eps: firstNumber(item.eps, item.epsTTM),
     change: firstNumber(item.change, item.priceChange),
     changesPercentage: firstNumber(item.changesPercentage, item.changePercentage, item.priceChangePercentage),
@@ -47,7 +56,33 @@ function normalizeFmpQuote(item) {
     yearHigh: firstNumber(item.yearHigh, item.high52Week),
     volume: firstNumber(item.volume),
     exchange: item.exchange ?? item.exchangeShortName ?? null,
-    timestamp: firstNumber(item.timestamp)
+    timestamp: firstNumber(item.timestamp),
+    source
+  };
+}
+
+function mergeQuotes(base, overlay) {
+  if (!base) return overlay;
+  if (!overlay) return base;
+  return {
+    ...base,
+    ...overlay,
+    symbol: base.symbol ?? overlay.symbol,
+    name: base.name ?? overlay.name,
+    price: firstNumber(base.price, overlay.price),
+    marketCap: firstNumber(base.marketCap, overlay.marketCap),
+    pe: firstNumber(base.pe, overlay.pe),
+    eps: firstNumber(base.eps, overlay.eps),
+    change: firstNumber(base.change, overlay.change),
+    changesPercentage: firstNumber(base.changesPercentage, overlay.changesPercentage),
+    dayLow: firstNumber(base.dayLow, overlay.dayLow),
+    dayHigh: firstNumber(base.dayHigh, overlay.dayHigh),
+    yearLow: firstNumber(base.yearLow, overlay.yearLow),
+    yearHigh: firstNumber(base.yearHigh, overlay.yearHigh),
+    volume: firstNumber(base.volume, overlay.volume),
+    exchange: base.exchange ?? overlay.exchange,
+    timestamp: firstNumber(base.timestamp, overlay.timestamp),
+    source: base.source === overlay.source ? base.source : `${base.source}+${overlay.source}`
   };
 }
 
@@ -59,9 +94,9 @@ function chunkSymbols(symbols, size) {
   return chunks;
 }
 
-async function fetchStableQuote(symbols, apiKey) {
-  const url = new URL("https://financialmodelingprep.com/stable/quote");
-  url.searchParams.set("symbol", symbols.join(","));
+async function fetchFmpJson(path, params, apiKey) {
+  const url = new URL(`https://financialmodelingprep.com${path}`);
+  Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
   url.searchParams.set("apikey", apiKey);
 
   const upstream = await fetch(url, {
@@ -79,7 +114,7 @@ async function fetchStableQuote(symbols, apiKey) {
     payload = { raw: text.slice(0, 240) };
   }
 
-  if (!upstream.ok) {
+  if (!upstream.ok || payload?.["Error Message"]) {
     const providerMessage = payload?.["Error Message"] || payload?.error || payload?.message || upstream.statusText;
     const error = new Error(`Quote provider returned HTTP ${upstream.status}`);
     error.status = upstream.status;
@@ -87,7 +122,75 @@ async function fetchStableQuote(symbols, apiKey) {
     throw error;
   }
 
-  return Array.isArray(payload) ? payload.map(normalizeFmpQuote) : [];
+  return payload;
+}
+
+function normalizeFmpArray(payload, source) {
+  if (!Array.isArray(payload)) return [];
+  return payload
+    .filter((item) => item && item.symbol)
+    .map((item) => normalizeFmpQuote(item, source));
+}
+
+async function fetchBatchQuote(symbols, apiKey) {
+  const payload = await fetchFmpJson("/stable/batch-quote", { symbols: symbols.join(",") }, apiKey);
+  return normalizeFmpArray(payload, "batch-quote");
+}
+
+async function fetchStockQuote(symbol, apiKey) {
+  const payload = await fetchFmpJson("/stable/quote", { symbol }, apiKey);
+  return normalizeFmpArray(payload, "quote")[0] ?? null;
+}
+
+async function fetchQuoteShort(symbol, apiKey) {
+  const payload = await fetchFmpJson("/stable/quote-short", { symbol }, apiKey);
+  return normalizeFmpArray(payload, "quote-short")[0] ?? null;
+}
+
+async function fetchProfileQuote(symbol, apiKey) {
+  const payload = await fetchFmpJson("/stable/profile", { symbol }, apiKey);
+  return normalizeFmpArray(payload, "profile")[0] ?? null;
+}
+
+async function fetchKeyMetricsTtm(symbol, apiKey) {
+  const payload = await fetchFmpJson("/stable/key-metrics-ttm", { symbol }, apiKey);
+  const item = Array.isArray(payload) ? payload[0] : payload;
+  if (!item || typeof item !== "object") return null;
+  return normalizeFmpQuote({ symbol, ...item }, "key-metrics-ttm");
+}
+
+async function fetchSingleWithFallback(symbol, apiKey) {
+  const errors = [];
+  let quote = null;
+
+  for (const attempt of [
+    () => fetchStockQuote(symbol, apiKey),
+    () => fetchQuoteShort(symbol, apiKey),
+    () => fetchProfileQuote(symbol, apiKey),
+    () => fetchKeyMetricsTtm(symbol, apiKey)
+  ]) {
+    try {
+      const next = await attempt();
+      if (next) quote = mergeQuotes(quote, next);
+      if (quote?.price && quote?.marketCap && quote?.pe) break;
+    } catch (error) {
+      errors.push({
+        status: error.status ?? 502,
+        message: error.providerMessage || error.message || "Quote provider failed"
+      });
+    }
+  }
+
+  if (quote) return quote;
+
+  const lastError = errors[errors.length - 1] ?? {
+    status: 204,
+    message: "No quote returned by provider"
+  };
+  const error = new Error(lastError.message);
+  error.status = lastError.status;
+  error.providerMessage = lastError.message;
+  throw error;
 }
 
 async function fetchQuotesResilient(symbols, apiKey) {
@@ -96,27 +199,45 @@ async function fetchQuotesResilient(symbols, apiKey) {
 
   async function trySymbols(group) {
     try {
-      const result = await fetchStableQuote(group, apiKey);
+      const result = await fetchBatchQuote(group, apiKey);
       quotes.push(...result);
       const returned = new Set(result.map((quote) => quote.symbol));
-      group
-        .filter((symbol) => !returned.has(symbol))
-        .forEach((symbol) => errors.push({
-          symbol,
-          status: 204,
-          message: "No quote returned by provider"
-        }));
+      const missing = group.filter((symbol) => !returned.has(symbol));
+      if (missing.length) {
+        if (group.length > 1) {
+          await Promise.all(missing.map((symbol) => trySymbols([symbol])));
+          return;
+        }
+
+        const symbol = group[0];
+        try {
+          const quote = await fetchSingleWithFallback(symbol, apiKey);
+          quotes.push(quote);
+        } catch (fallbackError) {
+          errors.push({
+            symbol,
+            status: fallbackError.status ?? 204,
+            message: fallbackError.providerMessage || fallbackError.message || "No quote returned by provider"
+          });
+        }
+      }
     } catch (error) {
-      if (group.length > 1 && error.status === 402) {
+      if (group.length > 1) {
         await Promise.all(group.map((symbol) => trySymbols([symbol])));
         return;
       }
 
-      group.forEach((symbol) => errors.push({
-        symbol,
-        status: error.status ?? 502,
-        message: error.providerMessage || error.message || "Quote provider failed"
-      }));
+      const symbol = group[0];
+      try {
+        const quote = await fetchSingleWithFallback(symbol, apiKey);
+        quotes.push(quote);
+      } catch (fallbackError) {
+        errors.push({
+          symbol,
+          status: fallbackError.status ?? error.status ?? 502,
+          message: fallbackError.providerMessage || fallbackError.message || error.providerMessage || error.message || "Quote provider failed"
+        });
+      }
     }
   }
 
