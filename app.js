@@ -28,6 +28,8 @@ const quoteState = {
   errors: [],
   requested: 0,
   returned: 0,
+  eligible: 0,
+  skipped: 0,
   quotes: new Map()
 };
 
@@ -286,6 +288,9 @@ function quoteStatusLabel() {
   if (quoteState.loading) return "Loading live quotes / 正在加载实时行情";
   if (quoteState.error) return `Quote fallback / 行情回退: ${quoteState.error}`;
   if (!quoteState.configured) return "Live quotes not configured / 未配置实时行情";
+  if (quoteState.skipped) {
+    return `${quoteState.provider}: ${quoteState.returned}/${quoteState.requested} quotes loaded, ${quoteState.skipped} free-plan skipped / 已加载 ${quoteState.returned}/${quoteState.requested}，免费套餐跳过 ${quoteState.skipped} 个`;
+  }
   if (quoteState.errors.length) {
     return `${quoteState.provider}: ${quoteState.returned}/${quoteState.requested} quotes loaded, ${quoteState.errors.length} limited / 已加载 ${quoteState.returned}/${quoteState.requested}，${quoteState.errors.length} 个受限`;
   }
@@ -976,6 +981,8 @@ async function loadLiveQuotes() {
     quoteState.errors = payload.errors ?? [];
     quoteState.requested = payload.requested ?? companies.length;
     quoteState.returned = payload.returned ?? (payload.quotes ?? []).length;
+    quoteState.eligible = payload.eligible ?? 0;
+    quoteState.skipped = payload.skipped ?? 0;
     quoteState.quotes = new Map((payload.quotes ?? []).map((quote) => [quote.symbol, quote]));
   } catch (error) {
     quoteState.loading = false;
@@ -986,6 +993,8 @@ async function loadLiveQuotes() {
     quoteState.errors = [];
     quoteState.requested = companies.length;
     quoteState.returned = 0;
+    quoteState.eligible = 0;
+    quoteState.skipped = 0;
     quoteState.quotes = new Map();
   }
 
