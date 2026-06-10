@@ -75,6 +75,10 @@ If the key is missing, the site still loads and falls back to the static valuati
 
 如果缺少 key，网站仍会正常加载，并回退到静态估值快照。
 
+If a provider plan does not support every ticker, `/api/quotes` returns available quotes plus an `errors` array for unsupported symbols; one 402 symbol does not block the rest of the dashboard.
+
+如果行情套餐不支持某些 ticker，`/api/quotes` 会返回可用行情，并把受限 ticker 放进 `errors` 数组；单个 402 ticker 不会拖垮整个仪表盘。
+
 ## Deploy To Vercel / 部署到 Vercel
 
 This is a dependency-free static site. It can be deployed directly to Vercel without npm install.

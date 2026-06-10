@@ -1,4 +1,6 @@
 const CACHE_SECONDS = 60;
+const PROVIDER = "Financial Modeling Prep";
+const MAX_BATCH_SIZE = 12;
 
 function sendJson(res, status, payload) {
   res.statusCode = status;
@@ -8,11 +10,12 @@ function sendJson(res, status, payload) {
 }
 
 function cleanSymbols(value) {
-  return String(value || "")
-    .split(",")
-    .map((symbol) => symbol.trim().toUpperCase())
-    .filter((symbol) => /^[A-Z0-9.-]{1,12}$/.test(symbol))
-    .slice(0, 120);
+  return [...new Set(
+    String(value || "")
+      .split(",")
+      .map((symbol) => symbol.trim().toUpperCase())
+      .filter((symbol) => /^[A-Z0-9.-]{1,12}$/.test(symbol))
+  )].slice(0, 120);
 }
 
 function numberOrNull(value) {
@@ -20,24 +23,108 @@ function numberOrNull(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function firstNumber(...values) {
+  for (const value of values) {
+    const number = numberOrNull(value);
+    if (number !== null) return number;
+  }
+  return null;
+}
+
 function normalizeFmpQuote(item) {
   return {
     symbol: item.symbol,
-    name: item.name ?? null,
-    price: numberOrNull(item.price),
-    marketCap: numberOrNull(item.marketCap),
-    pe: numberOrNull(item.pe),
-    eps: numberOrNull(item.eps),
-    change: numberOrNull(item.change),
-    changesPercentage: numberOrNull(item.changesPercentage),
-    dayLow: numberOrNull(item.dayLow),
-    dayHigh: numberOrNull(item.dayHigh),
-    yearLow: numberOrNull(item.yearLow),
-    yearHigh: numberOrNull(item.yearHigh),
-    volume: numberOrNull(item.volume),
-    exchange: item.exchange ?? null,
-    timestamp: numberOrNull(item.timestamp)
+    name: item.name ?? item.companyName ?? null,
+    price: firstNumber(item.price, item.previousClose, item.open),
+    marketCap: firstNumber(item.marketCap, item.marketCapitalization),
+    pe: firstNumber(item.pe, item.peRatio, item.priceEarningsRatio, item.priceEarningsRatioTTM, item.peRatioTTM),
+    eps: firstNumber(item.eps, item.epsTTM),
+    change: firstNumber(item.change, item.priceChange),
+    changesPercentage: firstNumber(item.changesPercentage, item.changePercentage, item.priceChangePercentage),
+    dayLow: firstNumber(item.dayLow, item.low),
+    dayHigh: firstNumber(item.dayHigh, item.high),
+    yearLow: firstNumber(item.yearLow, item.low52Week),
+    yearHigh: firstNumber(item.yearHigh, item.high52Week),
+    volume: firstNumber(item.volume),
+    exchange: item.exchange ?? item.exchangeShortName ?? null,
+    timestamp: firstNumber(item.timestamp)
   };
+}
+
+function chunkSymbols(symbols, size) {
+  const chunks = [];
+  for (let index = 0; index < symbols.length; index += size) {
+    chunks.push(symbols.slice(index, index + size));
+  }
+  return chunks;
+}
+
+async function fetchStableQuote(symbols, apiKey) {
+  const url = new URL("https://financialmodelingprep.com/stable/quote");
+  url.searchParams.set("symbol", symbols.join(","));
+  url.searchParams.set("apikey", apiKey);
+
+  const upstream = await fetch(url, {
+    headers: {
+      "Accept": "application/json",
+      "User-Agent": "AI-Value-Chain-Terminal/1.0"
+    }
+  });
+
+  const text = await upstream.text();
+  let payload;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    payload = { raw: text.slice(0, 240) };
+  }
+
+  if (!upstream.ok) {
+    const providerMessage = payload?.["Error Message"] || payload?.error || payload?.message || upstream.statusText;
+    const error = new Error(`Quote provider returned HTTP ${upstream.status}`);
+    error.status = upstream.status;
+    error.providerMessage = providerMessage;
+    throw error;
+  }
+
+  return Array.isArray(payload) ? payload.map(normalizeFmpQuote) : [];
+}
+
+async function fetchQuotesResilient(symbols, apiKey) {
+  const quotes = [];
+  const errors = [];
+
+  async function trySymbols(group) {
+    try {
+      const result = await fetchStableQuote(group, apiKey);
+      quotes.push(...result);
+      const returned = new Set(result.map((quote) => quote.symbol));
+      group
+        .filter((symbol) => !returned.has(symbol))
+        .forEach((symbol) => errors.push({
+          symbol,
+          status: 204,
+          message: "No quote returned by provider"
+        }));
+    } catch (error) {
+      if (group.length > 1 && error.status === 402) {
+        await Promise.all(group.map((symbol) => trySymbols([symbol])));
+        return;
+      }
+
+      group.forEach((symbol) => errors.push({
+        symbol,
+        status: error.status ?? 502,
+        message: error.providerMessage || error.message || "Quote provider failed"
+      }));
+    }
+  }
+
+  for (const group of chunkSymbols(symbols, MAX_BATCH_SIZE)) {
+    await trySymbols(group);
+  }
+
+  return { quotes, errors };
 }
 
 module.exports = async function handler(req, res) {
@@ -56,46 +143,38 @@ module.exports = async function handler(req, res) {
   if (!apiKey) {
     sendJson(res, 200, {
       configured: false,
-      provider: "Financial Modeling Prep",
+      provider: PROVIDER,
       asOf: new Date().toISOString(),
       quotes: [],
+      errors: [],
       message: "Set FMP_API_KEY in Vercel environment variables to enable live price, market cap and P/E."
     });
     return;
   }
 
-  const url = `https://financialmodelingprep.com/api/v3/quote/${encodeURIComponent(symbols.join(","))}?apikey=${encodeURIComponent(apiKey)}`;
-
   try {
-    const upstream = await fetch(url, {
-      headers: {
-        "Accept": "application/json",
-        "User-Agent": "AI-Value-Chain-Terminal/1.0"
-      }
-    });
-
-    if (!upstream.ok) {
-      sendJson(res, upstream.status, {
-        configured: true,
-        provider: "Financial Modeling Prep",
-        error: `Quote provider returned HTTP ${upstream.status}`
-      });
-      return;
-    }
-
-    const payload = await upstream.json();
-    const quotes = Array.isArray(payload) ? payload.map(normalizeFmpQuote) : [];
+    const { quotes, errors } = await fetchQuotesResilient(symbols, apiKey);
 
     sendJson(res, 200, {
       configured: true,
-      provider: "Financial Modeling Prep",
+      provider: PROVIDER,
       asOf: new Date().toISOString(),
-      quotes
+      requested: symbols.length,
+      returned: quotes.length,
+      quotes,
+      errors
     });
   } catch (error) {
-    sendJson(res, 502, {
+    sendJson(res, 200, {
       configured: true,
-      provider: "Financial Modeling Prep",
+      provider: PROVIDER,
+      asOf: new Date().toISOString(),
+      quotes: [],
+      errors: symbols.map((symbol) => ({
+        symbol,
+        status: error.status ?? 502,
+        message: error.providerMessage || error.message || "Quote provider failed"
+      })),
       error: error instanceof Error ? error.message : "Quote provider failed"
     });
   }

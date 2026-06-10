@@ -25,6 +25,9 @@ const quoteState = {
   provider: "Not configured",
   asOf: null,
   error: null,
+  errors: [],
+  requested: 0,
+  returned: 0,
   quotes: new Map()
 };
 
@@ -78,6 +81,16 @@ function formatUsd(value) {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: value >= 100 ? 0 : 2
+  }).format(value);
+}
+
+function formatPrice(value) {
+  if (!Number.isFinite(value)) return "-";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
   }).format(value);
 }
 
@@ -265,11 +278,18 @@ function getLiveQuote(company) {
   return quoteState.quotes.get(company.ticker) ?? null;
 }
 
+function getQuoteError(company) {
+  return quoteState.errors.find((item) => item.symbol === company.ticker) ?? null;
+}
+
 function quoteStatusLabel() {
   if (quoteState.loading) return "Loading live quotes / 正在加载实时行情";
   if (quoteState.error) return `Quote fallback / 行情回退: ${quoteState.error}`;
   if (!quoteState.configured) return "Live quotes not configured / 未配置实时行情";
-  return `${quoteState.provider} live quotes / ${quoteState.provider} 行情`;
+  if (quoteState.errors.length) {
+    return `${quoteState.provider}: ${quoteState.returned}/${quoteState.requested} quotes loaded, ${quoteState.errors.length} limited / 已加载 ${quoteState.returned}/${quoteState.requested}，${quoteState.errors.length} 个受限`;
+  }
+  return `${quoteState.provider}: ${quoteState.returned || quoteState.quotes.size}/${quoteState.requested || companies.length} quotes loaded / 已加载行情`;
 }
 
 function capTierRank(tier) {
@@ -620,7 +640,7 @@ function renderCompanyTable(filteredCompanies) {
             <small>${company.companyCn}</small>
           </td>
           <td>
-            <span class="quote-price">${formatUsd(quote?.price)}</span>
+            <span class="quote-price">${formatPrice(quote?.price)}</span>
             <small class="${quoteChangeClass(quote)}">${formatQuoteChange(quote)}</small>
           </td>
           <td>
@@ -671,6 +691,7 @@ function renderCompanyDetail() {
     .filter(Boolean);
   const valuation = getValuation(company);
   const quote = getLiveQuote(company);
+  const quoteError = getQuoteError(company);
 
   selectors.companyDetail.innerHTML = `
     <div class="detail-header">
@@ -699,12 +720,13 @@ function renderCompanyDetail() {
     <section class="detail-section quote-detail">
       <h3>Live Market / 实时行情</h3>
       <div class="quote-grid">
-        <span><strong>${formatUsd(quote?.price)}</strong><small>Price / 股价</small></span>
+        <span><strong>${formatPrice(quote?.price)}</strong><small>Price / 股价</small></span>
         <span><strong>${formatMarketCap(quote?.marketCap)}</strong><small>Market cap / 市值</small></span>
         <span><strong>${formatMultiple(quote?.pe, valuation.pe)}</strong><small>TTM P/E / 当前市盈率</small></span>
         <span><strong class="${quoteChangeClass(quote)}">${formatQuoteChange(quote)}</strong><small>Change / 涨跌</small></span>
       </div>
       <p>${quoteStatusLabel()}</p>
+      ${quoteError ? `<p>Provider limit for ${company.ticker}: ${quoteError.message} / ${company.ticker} 行情受限：${quoteError.message}</p>` : ""}
       <p>Last quote: ${formatQuoteTime(quote?.timestamp ?? quoteState.asOf)} / 最新行情：${formatQuoteTime(quote?.timestamp ?? quoteState.asOf)}</p>
     </section>
 
@@ -939,13 +961,23 @@ async function loadLiveQuotes() {
     const response = await fetch(`/api/quotes?symbols=${encodeURIComponent(symbols)}`, {
       cache: "no-store"
     });
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      throw new Error(response.status === 404
+        ? "Quote API route is missing. Upload api/quotes.js and redeploy."
+        : `Quote API returned ${contentType || "non-JSON response"}`);
+    }
+
     const payload = await response.json();
 
     quoteState.loading = false;
     quoteState.configured = Boolean(payload.configured);
     quoteState.provider = payload.provider ?? "Quote provider";
     quoteState.asOf = payload.asOf ?? new Date().toISOString();
-    quoteState.error = response.ok ? payload.error ?? null : payload.error ?? `HTTP ${response.status}`;
+    quoteState.error = response.ok ? null : payload.error ?? `HTTP ${response.status}`;
+    quoteState.errors = payload.errors ?? [];
+    quoteState.requested = payload.requested ?? companies.length;
+    quoteState.returned = payload.returned ?? (payload.quotes ?? []).length;
     quoteState.quotes = new Map((payload.quotes ?? []).map((quote) => [quote.symbol, quote]));
   } catch (error) {
     quoteState.loading = false;
@@ -953,6 +985,9 @@ async function loadLiveQuotes() {
     quoteState.provider = "Quote provider";
     quoteState.asOf = new Date().toISOString();
     quoteState.error = error instanceof Error ? error.message : "quote request failed";
+    quoteState.errors = [];
+    quoteState.requested = companies.length;
+    quoteState.returned = 0;
     quoteState.quotes = new Map();
   }
 
