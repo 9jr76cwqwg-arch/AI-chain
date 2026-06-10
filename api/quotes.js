@@ -1,11 +1,11 @@
-const CACHE_SECONDS = 60;
+const CACHE_SECONDS = 300;
 const PROVIDER = "Financial Modeling Prep";
 const MAX_BATCH_SIZE = 12;
 
 function sendJson(res, status, payload) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.setHeader("Cache-Control", `s-maxage=${CACHE_SECONDS}, stale-while-revalidate=${CACHE_SECONDS * 4}`);
+  res.setHeader("Cache-Control", `s-maxage=${CACHE_SECONDS}, stale-while-revalidate=${CACHE_SECONDS * 6}`);
   res.end(JSON.stringify(payload));
 }
 
@@ -32,11 +32,15 @@ function firstNumber(...values) {
   return null;
 }
 
-function normalizeFmpQuote(item, source = "quote") {
+function providerMessage(payload, fallback) {
+  return payload?.["Error Message"] || payload?.error || payload?.message || fallback || "Quote provider failed";
+}
+
+function normalizeFmpQuote(item) {
   return {
     symbol: item.symbol,
     name: item.name ?? item.companyName ?? null,
-    price: firstNumber(item.price, item.previousClose, item.open, item.priceAvg50),
+    price: firstNumber(item.price, item.previousClose, item.open),
     marketCap: firstNumber(item.marketCap, item.marketCapitalization, item.mktCap),
     pe: firstNumber(
       item.pe,
@@ -56,33 +60,7 @@ function normalizeFmpQuote(item, source = "quote") {
     yearHigh: firstNumber(item.yearHigh, item.high52Week),
     volume: firstNumber(item.volume),
     exchange: item.exchange ?? item.exchangeShortName ?? null,
-    timestamp: firstNumber(item.timestamp),
-    source
-  };
-}
-
-function mergeQuotes(base, overlay) {
-  if (!base) return overlay;
-  if (!overlay) return base;
-  return {
-    ...base,
-    ...overlay,
-    symbol: base.symbol ?? overlay.symbol,
-    name: base.name ?? overlay.name,
-    price: firstNumber(base.price, overlay.price),
-    marketCap: firstNumber(base.marketCap, overlay.marketCap),
-    pe: firstNumber(base.pe, overlay.pe),
-    eps: firstNumber(base.eps, overlay.eps),
-    change: firstNumber(base.change, overlay.change),
-    changesPercentage: firstNumber(base.changesPercentage, overlay.changesPercentage),
-    dayLow: firstNumber(base.dayLow, overlay.dayLow),
-    dayHigh: firstNumber(base.dayHigh, overlay.dayHigh),
-    yearLow: firstNumber(base.yearLow, overlay.yearLow),
-    yearHigh: firstNumber(base.yearHigh, overlay.yearHigh),
-    volume: firstNumber(base.volume, overlay.volume),
-    exchange: base.exchange ?? overlay.exchange,
-    timestamp: firstNumber(base.timestamp, overlay.timestamp),
-    source: base.source === overlay.source ? base.source : `${base.source}+${overlay.source}`
+    timestamp: firstNumber(item.timestamp)
   };
 }
 
@@ -94,9 +72,9 @@ function chunkSymbols(symbols, size) {
   return chunks;
 }
 
-async function fetchFmpJson(path, params, apiKey) {
-  const url = new URL(`https://financialmodelingprep.com${path}`);
-  Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
+async function fetchStableQuote(symbols, apiKey) {
+  const url = new URL("https://financialmodelingprep.com/stable/quote");
+  url.searchParams.set("symbol", symbols.join(","));
   url.searchParams.set("apikey", apiKey);
 
   const upstream = await fetch(url, {
@@ -115,137 +93,83 @@ async function fetchFmpJson(path, params, apiKey) {
   }
 
   if (!upstream.ok || payload?.["Error Message"]) {
-    const providerMessage = payload?.["Error Message"] || payload?.error || payload?.message || upstream.statusText;
     const error = new Error(`Quote provider returned HTTP ${upstream.status}`);
     error.status = upstream.status;
-    error.providerMessage = providerMessage;
+    error.providerMessage = providerMessage(payload, upstream.statusText);
     throw error;
   }
 
-  return payload;
-}
-
-function normalizeFmpArray(payload, source) {
-  if (!Array.isArray(payload)) return [];
-  return payload
-    .filter((item) => item && item.symbol)
-    .map((item) => normalizeFmpQuote(item, source));
-}
-
-async function fetchBatchQuote(symbols, apiKey) {
-  const payload = await fetchFmpJson("/stable/batch-quote", { symbols: symbols.join(",") }, apiKey);
-  return normalizeFmpArray(payload, "batch-quote");
-}
-
-async function fetchStockQuote(symbol, apiKey) {
-  const payload = await fetchFmpJson("/stable/quote", { symbol }, apiKey);
-  return normalizeFmpArray(payload, "quote")[0] ?? null;
-}
-
-async function fetchQuoteShort(symbol, apiKey) {
-  const payload = await fetchFmpJson("/stable/quote-short", { symbol }, apiKey);
-  return normalizeFmpArray(payload, "quote-short")[0] ?? null;
-}
-
-async function fetchProfileQuote(symbol, apiKey) {
-  const payload = await fetchFmpJson("/stable/profile", { symbol }, apiKey);
-  return normalizeFmpArray(payload, "profile")[0] ?? null;
-}
-
-async function fetchKeyMetricsTtm(symbol, apiKey) {
-  const payload = await fetchFmpJson("/stable/key-metrics-ttm", { symbol }, apiKey);
-  const item = Array.isArray(payload) ? payload[0] : payload;
-  if (!item || typeof item !== "object") return null;
-  return normalizeFmpQuote({ symbol, ...item }, "key-metrics-ttm");
-}
-
-async function fetchSingleWithFallback(symbol, apiKey) {
-  const errors = [];
-  let quote = null;
-
-  for (const attempt of [
-    () => fetchStockQuote(symbol, apiKey),
-    () => fetchQuoteShort(symbol, apiKey),
-    () => fetchProfileQuote(symbol, apiKey),
-    () => fetchKeyMetricsTtm(symbol, apiKey)
-  ]) {
-    try {
-      const next = await attempt();
-      if (next) quote = mergeQuotes(quote, next);
-      if (quote?.price && quote?.marketCap && quote?.pe) break;
-    } catch (error) {
-      errors.push({
-        status: error.status ?? 502,
-        message: error.providerMessage || error.message || "Quote provider failed"
-      });
-    }
-  }
-
-  if (quote) return quote;
-
-  const lastError = errors[errors.length - 1] ?? {
-    status: 204,
-    message: "No quote returned by provider"
-  };
-  const error = new Error(lastError.message);
-  error.status = lastError.status;
-  error.providerMessage = lastError.message;
-  throw error;
+  return Array.isArray(payload) ? payload.map(normalizeFmpQuote) : [];
 }
 
 async function fetchQuotesResilient(symbols, apiKey) {
   const quotes = [];
   const errors = [];
+  let rateLimitError = null;
 
   async function trySymbols(group) {
+    if (rateLimitError) {
+      group.forEach((symbol) => errors.push({
+        symbol,
+        status: rateLimitError.status,
+        message: rateLimitError.providerMessage
+      }));
+      return;
+    }
+
     try {
-      const result = await fetchBatchQuote(group, apiKey);
+      const result = await fetchStableQuote(group, apiKey);
       quotes.push(...result);
       const returned = new Set(result.map((quote) => quote.symbol));
-      const missing = group.filter((symbol) => !returned.has(symbol));
-      if (missing.length) {
-        if (group.length > 1) {
-          await Promise.all(missing.map((symbol) => trySymbols([symbol])));
-          return;
-        }
-
-        const symbol = group[0];
-        try {
-          const quote = await fetchSingleWithFallback(symbol, apiKey);
-          quotes.push(quote);
-        } catch (fallbackError) {
-          errors.push({
-            symbol,
-            status: fallbackError.status ?? 204,
-            message: fallbackError.providerMessage || fallbackError.message || "No quote returned by provider"
-          });
-        }
-      }
+      group
+        .filter((symbol) => !returned.has(symbol))
+        .forEach((symbol) => errors.push({
+          symbol,
+          status: 204,
+          message: "No quote returned by provider"
+        }));
     } catch (error) {
-      if (group.length > 1) {
-        await Promise.all(group.map((symbol) => trySymbols([symbol])));
+      if (error.status === 429) {
+        rateLimitError = error;
+        group.forEach((symbol) => errors.push({
+          symbol,
+          status: 429,
+          message: error.providerMessage || "FMP rate limit reached"
+        }));
         return;
       }
 
-      const symbol = group[0];
-      try {
-        const quote = await fetchSingleWithFallback(symbol, apiKey);
-        quotes.push(quote);
-      } catch (fallbackError) {
-        errors.push({
-          symbol,
-          status: fallbackError.status ?? error.status ?? 502,
-          message: fallbackError.providerMessage || fallbackError.message || error.providerMessage || error.message || "Quote provider failed"
-        });
+      if (group.length > 1 && error.status === 402) {
+        for (const symbol of group) {
+          await trySymbols([symbol]);
+        }
+        return;
       }
+
+      group.forEach((symbol) => errors.push({
+        symbol,
+        status: error.status ?? 502,
+        message: error.providerMessage || error.message || "Quote provider failed"
+      }));
     }
   }
 
   for (const group of chunkSymbols(symbols, MAX_BATCH_SIZE)) {
     await trySymbols(group);
+    if (rateLimitError) {
+      const alreadyHandled = new Set([...quotes.map((quote) => quote.symbol), ...errors.map((error) => error.symbol)]);
+      symbols
+        .filter((symbol) => !alreadyHandled.has(symbol))
+        .forEach((symbol) => errors.push({
+          symbol,
+          status: 429,
+          message: rateLimitError.providerMessage || "FMP rate limit reached"
+        }));
+      break;
+    }
   }
 
-  return { quotes, errors };
+  return { quotes, errors, rateLimited: Boolean(rateLimitError) };
 }
 
 module.exports = async function handler(req, res) {
@@ -266,6 +190,8 @@ module.exports = async function handler(req, res) {
       configured: false,
       provider: PROVIDER,
       asOf: new Date().toISOString(),
+      requested: symbols.length,
+      returned: 0,
       quotes: [],
       errors: [],
       message: "Set FMP_API_KEY in Vercel environment variables to enable live price, market cap and P/E."
@@ -274,7 +200,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { quotes, errors } = await fetchQuotesResilient(symbols, apiKey);
+    const { quotes, errors, rateLimited } = await fetchQuotesResilient(symbols, apiKey);
 
     sendJson(res, 200, {
       configured: true,
@@ -282,6 +208,7 @@ module.exports = async function handler(req, res) {
       asOf: new Date().toISOString(),
       requested: symbols.length,
       returned: quotes.length,
+      rateLimited,
       quotes,
       errors
     });
@@ -290,6 +217,9 @@ module.exports = async function handler(req, res) {
       configured: true,
       provider: PROVIDER,
       asOf: new Date().toISOString(),
+      requested: symbols.length,
+      returned: 0,
+      rateLimited: error.status === 429,
       quotes: [],
       errors: symbols.map((symbol) => ({
         symbol,
