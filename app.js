@@ -958,9 +958,7 @@ async function loadLiveQuotes() {
   renderAll();
 
   try {
-    const response = await fetch(`/api/quotes?symbols=${encodeURIComponent(symbols)}`, {
-      cache: "no-store"
-    });
+    const response = await fetch(`/api/quotes?symbols=${encodeURIComponent(symbols)}`);
     const contentType = response.headers.get("content-type") ?? "";
     if (!contentType.includes("application/json")) {
       throw new Error(response.status === 404
