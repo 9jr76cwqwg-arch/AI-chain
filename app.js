@@ -297,6 +297,12 @@ function quoteStatusLabel() {
   return `${quoteState.provider}: ${quoteState.returned || quoteState.quotes.size}/${quoteState.requested || companies.length} quotes loaded / 已加载行情`;
 }
 
+function clearCompanySearch() {
+  if (!state.search) return;
+  state.search = "";
+  selectors.search.value = "";
+}
+
 function capTierRank(tier) {
   return {
     Mega: 4,
@@ -1009,16 +1015,19 @@ function bindEvents() {
 
   selectors.layerFilter.addEventListener("change", (event) => {
     state.layer = event.target.value;
+    clearCompanySearch();
     renderAll();
   });
 
   selectors.sectorFilter.addEventListener("change", (event) => {
     state.sector = event.target.value;
+    clearCompanySearch();
     renderAll();
   });
 
   selectors.typeFilter.addEventListener("change", (event) => {
     state.type = event.target.value;
+    clearCompanySearch();
     renderAll();
   });
 
