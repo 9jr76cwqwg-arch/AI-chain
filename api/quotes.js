@@ -121,6 +121,58 @@ function skippedErrors(symbols) {
   }));
 }
 
+async function fetchEligibleQuotes(symbols, apiKey) {
+  if (!symbols.length) return { quotes: [], errors: [], rateLimited: false };
+
+  try {
+    return {
+      quotes: await fetchStableQuotes(symbols, apiKey),
+      errors: [],
+      rateLimited: false
+    };
+  } catch (error) {
+    if (error.status !== 402 || symbols.length === 1) throw error;
+  }
+
+  const quotes = [];
+  const errors = [];
+
+  for (const symbol of symbols) {
+    try {
+      const result = await fetchStableQuotes([symbol], apiKey);
+      if (result.length) {
+        quotes.push(...result);
+      } else {
+        errors.push({
+          symbol,
+          status: 204,
+          message: "No quote returned by provider."
+        });
+      }
+    } catch (error) {
+      errors.push({
+        symbol,
+        status: error.status ?? 502,
+        message: error.providerMessage || error.message || "Quote provider failed"
+      });
+
+      if (error.status === 429) {
+        symbols
+          .slice(symbols.indexOf(symbol) + 1)
+          .forEach((remainingSymbol) => errors.push({
+            symbol: remainingSymbol,
+            status: 429,
+            message: error.providerMessage || "FMP rate limit reached"
+          }));
+
+        return { quotes, errors, rateLimited: true };
+      }
+    }
+  }
+
+  return { quotes, errors, rateLimited: false };
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "GET") {
     sendJson(res, 405, { error: "Method not allowed" });
@@ -155,9 +207,11 @@ module.exports = async function handler(req, res) {
   const skippedSymbols = symbols.filter((symbol) => !FREE_PLAN_SUPPORTED_SYMBOLS.has(symbol));
 
   try {
-    const quotes = await fetchStableQuotes(eligibleSymbols, apiKey);
+    const result = await fetchEligibleQuotes(eligibleSymbols, apiKey);
+    const quotes = result.quotes;
     const returned = new Set(quotes.map((quote) => quote.symbol));
     const missingEligible = eligibleSymbols.filter((symbol) => !returned.has(symbol));
+    const quotedOrErrored = new Set([...returned, ...result.errors.map((item) => item.symbol)]);
 
     const payload = {
       configured: true,
@@ -168,11 +222,12 @@ module.exports = async function handler(req, res) {
       eligible: eligibleSymbols.length,
       returned: quotes.length,
       skipped: skippedSymbols.length,
-      rateLimited: false,
+      rateLimited: result.rateLimited,
       quotes,
       errors: [
         ...skippedErrors(skippedSymbols),
-        ...missingEligible.map((symbol) => ({
+        ...result.errors,
+        ...missingEligible.filter((symbol) => !quotedOrErrored.has(symbol)).map((symbol) => ({
           symbol,
           status: 204,
           message: "No quote returned by provider."
@@ -180,7 +235,7 @@ module.exports = async function handler(req, res) {
       ]
     };
 
-    sendJson(res, 200, payload);
+    sendJson(res, 200, payload, result.rateLimited ? "no-store, max-age=0" : undefined);
   } catch (error) {
     const rateLimited = error.status === 429;
 
