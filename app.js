@@ -434,8 +434,20 @@ function findCompanyByPlayer(player) {
   });
 }
 
-function renderLandscapeMap() {
-  selectors.landscapeMap.innerHTML = landscapeLayers
+function hasActiveCompanyFilters() {
+  return Boolean(
+    state.search.trim() ||
+    state.layer !== "all" ||
+    state.sector !== "all" ||
+    state.type !== "all"
+  );
+}
+
+function renderLandscapeMap(filteredCompanies = companies) {
+  const filteredIds = new Set(filteredCompanies.map((company) => company.id));
+  const activeFilters = hasActiveCompanyFilters();
+
+  const rows = landscapeLayers
     .map((layer) => {
       const segments = layer.segments
         .map((segment) => {
@@ -443,11 +455,17 @@ function renderLandscapeMap() {
             .map((player) => {
               const company = findCompanyByPlayer(player);
               if (company) {
+                if (activeFilters && !filteredIds.has(company.id)) return "";
                 return `<button class="player public" type="button" data-company="${company.id}" title="Tracked public company / 已跟踪上市公司">${player}</button>`;
               }
+              if (activeFilters) return "";
               return `<span class="player private" title="Reference company or private/non-covered name / 参考公司或非覆盖公司">${player}</span>`;
             })
+            .filter(Boolean)
             .join("");
+
+          if (!players) return "";
+
           return `
             <div class="landscape-segment">
               <h4>${segment.name}<br /><span>${segment.nameCn}</span></h4>
@@ -455,7 +473,10 @@ function renderLandscapeMap() {
             </div>
           `;
         })
+        .filter(Boolean)
         .join("");
+
+      if (!segments && activeFilters) return "";
 
       const trends = layer.trend
         .map((item, index) => `<li>${item}<br /><span>${layer.trendCn[index]}</span></li>`)
@@ -477,7 +498,19 @@ function renderLandscapeMap() {
         </article>
       `;
     })
-    .join("");
+    .filter(Boolean);
+
+  if (!rows.length) {
+    selectors.landscapeMap.innerHTML = `
+      <article class="landscape-empty">
+        <strong>No landscape matches / 图谱无匹配结果</strong>
+        <p>Try clearing Search or loosening Layer, Sector, or Type filters. / 请清空搜索，或放宽环节、板块、类型筛选。</p>
+      </article>
+    `;
+    return;
+  }
+
+  selectors.landscapeMap.innerHTML = rows.join("");
 }
 
 function renderRegionalMap() {
@@ -1105,6 +1138,7 @@ function renderAll() {
   }
 
   renderSummary();
+  renderLandscapeMap(filteredCompanies);
   renderChainMap(filteredCompanies);
   renderValuationSummary(filteredCompanies);
   renderCompanyTable(filteredCompanies);
@@ -1112,7 +1146,7 @@ function renderAll() {
 }
 
 renderLayerOptions();
-renderLandscapeMap();
+renderLandscapeMap(companies);
 renderRegionalMap();
 renderNewsFeed();
 renderPlaybooks();
